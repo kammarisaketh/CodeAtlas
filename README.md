@@ -99,6 +99,20 @@ Do not commit `.env` files. They are ignored by Git.
 6. Start indexing.
 7. Use Explore, Ask, and Review to inspect the repository.
 
+## Screenshots
+
+| Home | Repositories |
+| --- | --- |
+| ![CodeAtlas home screen](docs/screenshots/01-home.png) | ![CodeAtlas repositories screen](docs/screenshots/02-repos.png) |
+
+| Architecture Explorer | Ask Your Code |
+| --- | --- |
+| ![CodeAtlas architecture explorer](docs/screenshots/03-explore.png) | ![CodeAtlas ask screen](docs/screenshots/04-ask.png) |
+
+| Account |
+| --- |
+| ![CodeAtlas account screen](docs/screenshots/05-account.png) |
+
 ## Documentation
 
 - [Product Requirements](docs/PRD.md)
