@@ -608,12 +608,20 @@ final class ArchitectureExplorerViewModel: ObservableObject {
     @Published private(set) var snapshot: ArchitectureSnapshot?
     @Published private(set) var selectedFile: ArchitectureFile?
     @Published private(set) var selectedFileContent: String?
+    @Published var searchText = ""
     @Published private(set) var isLoading = false
     @Published private(set) var isLoadingFile = false
 
     private let service: any CodeAtlasIntelligenceServicing
     private let backendClient = AccountBackendClient()
     private var backendRepositoryID: UUID?
+
+    var filteredSnapshot: ArchitectureSnapshot? {
+        guard let snapshot else { return nil }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return snapshot }
+        return snapshot.filtered(matching: query)
+    }
 
     init(service: (any CodeAtlasIntelligenceServicing)? = nil) {
         self.service = service ?? MockCodeAtlasIntelligenceService()
@@ -1490,7 +1498,8 @@ struct ArchitectureExplorerScreen: View {
 
                     if viewModel.isLoading {
                         LoadingPanel(title: "Mapping repository", detail: "Finding modules, entry points, and dependency edges.")
-                    } else if let snapshot = viewModel.snapshot {
+                    } else if let snapshot = viewModel.filteredSnapshot {
+                        ArchitectureSearchField(text: $viewModel.searchText)
                         ArchitectureSnapshotView(
                             snapshot: snapshot,
                             selectedFile: viewModel.selectedFile,
@@ -2323,6 +2332,35 @@ private struct AskInputBar: View {
     }
 }
 
+private struct ArchitectureSearchField: View {
+    @Binding var text: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Search files, modules, or dependencies", text: $text)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            if !text.isEmpty {
+                Button {
+                    withAnimation(.snappy) {
+                        text = ""
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear architecture search")
+            }
+        }
+        .padding(14)
+        .background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityIdentifier("architectureSearchField")
+    }
+}
+
 private struct ArchitectureSnapshotView: View {
     let snapshot: ArchitectureSnapshot
     let selectedFile: ArchitectureFile?
@@ -2333,12 +2371,17 @@ private struct ArchitectureSnapshotView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             SectionHeader(title: "Project Tree", symbol: "folder.badge.gearshape")
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(snapshot.folders) { folder in
-                    ArchitectureFolderRow(folder: folder, selectedFile: selectedFile, selectFile: selectFile)
+            if snapshot.folders.isEmpty {
+                ContentUnavailableView("No matching files", systemImage: "magnifyingglass", description: Text("Try a module name, file name, language, or dependency."))
+                    .panelStyle()
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(snapshot.folders) { folder in
+                        ArchitectureFolderRow(folder: folder, selectedFile: selectedFile, selectFile: selectFile)
+                    }
                 }
+                .panelStyle()
             }
-            .panelStyle()
 
             if let selectedFile {
                 ArchitectureFileDetailView(file: selectedFile, content: selectedFileContent, isLoadingContent: isLoadingFile)
@@ -2423,6 +2466,33 @@ private struct ArchitectureFileDetailView: View {
     let content: String?
     let isLoadingContent: Bool
 
+    private var displayedContent: String {
+        if let content, !content.isEmpty {
+            content
+        } else {
+            file.sampleCode
+        }
+    }
+
+    private var discoveredSymbols: [String] {
+        displayedContent
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { line in
+                line.hasPrefix("struct ") ||
+                line.hasPrefix("final class ") ||
+                line.hasPrefix("class ") ||
+                line.hasPrefix("actor ") ||
+                line.hasPrefix("enum ") ||
+                line.hasPrefix("func ") ||
+                line.hasPrefix("private func ") ||
+                line.hasPrefix("public func ") ||
+                line.hasPrefix("init(")
+            }
+            .prefix(8)
+            .map { String($0.prefix(90)) }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Label("Selected File", systemImage: "doc.text.magnifyingglass")
@@ -2453,14 +2523,21 @@ private struct ArchitectureFileDetailView: View {
             if !file.relatedFiles.isEmpty {
                 ArchitectureTagSection(title: "Related Files", symbol: "link", values: file.relatedFiles)
             }
+            if !discoveredSymbols.isEmpty {
+                ArchitectureTagSection(title: "Functions, Classes, and Types", symbol: "function", values: discoveredSymbols)
+            }
+
+            SectionHeader(title: "Architecture Explanation", symbol: "point.3.connected.trianglepath.dotted")
+            Text("This file is part of the \(file.language) layer. It depends on \(file.dependencies.isEmpty ? "local project context" : file.dependencies.joined(separator: ", ")) and is related to \(file.relatedFiles.isEmpty ? "nearby files discovered in the repository map" : file.relatedFiles.joined(separator: ", ")).")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             SectionHeader(title: "Source Preview", symbol: "curlybraces")
             if isLoadingContent {
                 ProgressView("Loading file content")
-            } else if let content, !content.isEmpty {
-                CodeSnippetBlock(text: content)
             } else {
-                CodeSnippetBlock(text: file.sampleCode)
+                CodeSnippetBlock(text: displayedContent)
             }
         }
         .panelStyle()
@@ -3051,6 +3128,25 @@ private extension ArchitectureSnapshot {
     }
 }
 
+private extension ArchitectureSnapshot {
+    func filtered(matching query: String) -> ArchitectureSnapshot {
+        let normalizedQuery = query.localizedCaseInsensitiveContains("/") ? query : query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filteredFolders = folders.compactMap { $0.filtered(matching: normalizedQuery) }
+        let filteredModules = modules.filter { module in
+            module.name.localizedCaseInsensitiveContains(normalizedQuery) ||
+            module.responsibility.localizedCaseInsensitiveContains(normalizedQuery) ||
+            module.dependencies.contains { $0.localizedCaseInsensitiveContains(normalizedQuery) }
+        }
+        return ArchitectureSnapshot(
+            modules: filteredModules.isEmpty ? modules.filter { module in filteredFolders.contains { $0.name.localizedCaseInsensitiveContains(module.name) } } : filteredModules,
+            entryPoints: entryPoints.filter { $0.localizedCaseInsensitiveContains(normalizedQuery) },
+            riskNotes: riskNotes,
+            architectureNotes: architectureNotes.filter { $0.localizedCaseInsensitiveContains(normalizedQuery) },
+            folders: filteredFolders
+        )
+    }
+}
+
 private extension ArchitectureFolder {
     nonisolated init(backendNode: BackendRepositoryMapNode) {
         let childFolders = backendNode.children.filter { $0.kind == "folder" }.map(ArchitectureFolder.init(backendNode:))
@@ -3065,6 +3161,20 @@ private extension ArchitectureFolder {
 
     func countFiles(in module: String) -> Int {
         files.filter { $0.path.hasPrefix(module) }.count + folders.reduce(0) { $0 + $1.countFiles(in: module) }
+    }
+
+    func filtered(matching query: String) -> ArchitectureFolder? {
+        let matchingFiles = files.filter { $0.matches(query) }
+        let matchingFolders = folders.compactMap { $0.filtered(matching: query) }
+        let folderMatches = name.localizedCaseInsensitiveContains(query)
+        guard folderMatches || !matchingFiles.isEmpty || !matchingFolders.isEmpty else { return nil }
+        return ArchitectureFolder(
+            id: id,
+            name: name,
+            symbol: symbol,
+            folders: folderMatches ? folders : matchingFolders,
+            files: folderMatches ? files : matchingFiles
+        )
     }
 }
 
@@ -3135,6 +3245,15 @@ struct ArchitectureFile: Identifiable, Equatable {
     var accessibilityKey: String {
         path.replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: ".", with: "_")
+    }
+
+    func matches(_ query: String) -> Bool {
+        name.localizedCaseInsensitiveContains(query) ||
+        path.localizedCaseInsensitiveContains(query) ||
+        language.localizedCaseInsensitiveContains(query) ||
+        purpose.localizedCaseInsensitiveContains(query) ||
+        dependencies.contains { $0.localizedCaseInsensitiveContains(query) } ||
+        relatedFiles.contains { $0.localizedCaseInsensitiveContains(query) }
     }
 }
 
