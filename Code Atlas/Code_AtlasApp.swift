@@ -12,7 +12,9 @@ import SwiftData
 struct Code_AtlasApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            AtlasProgress.self,
+            DocumentAnalysis.self,
+            SavedCodeAtlasInsight.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

@@ -29,9 +29,32 @@
 		07A3AF373012CF3600AB3CAE /* Code AtlasUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Code AtlasUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		07A3AF643012DAFD00AB3CAE /* Exceptions for "Code Atlas" folder in "Code Atlas" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				App/FoundationStatusView.swift,
+				Authentication/AuthenticationService.swift,
+				Authentication/KeychainService.swift,
+				Core/AppContainer.swift,
+				Core/CodeAtlasModels.swift,
+				Core/ServiceProtocols.swift,
+				DesignSystem/CodeAtlasDesignSystem.swift,
+				Networking/APIClient.swift,
+				Repositories/RepositoryDashboardView.swift,
+				Repositories/RepositoryDashboardViewModel.swift,
+				Repositories/RepositoryService.swift,
+			);
+			target = 07A3AF1D3012CF3500AB3CAE /* Code Atlas */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		07A3AF203012CF3500AB3CAE /* Code Atlas */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				07A3AF643012DAFD00AB3CAE /* Exceptions for "Code Atlas" folder in "Code Atlas" target */,
+			);
 			path = "Code Atlas";
 			sourceTree = "<group>";
 		};
@@ -388,6 +411,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Code Atlas/Code Atlas.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
@@ -430,6 +454,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Code Atlas/Code Atlas.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
