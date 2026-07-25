@@ -760,12 +760,30 @@ final class RefactoringAssistantViewModel: ObservableObject {
 final class PullRequestReviewViewModel: ObservableObject {
     @Published private(set) var summary: PullRequestSummary?
     @Published private(set) var decisionOverride: PullRequestApprovalStatus?
+    @Published var selectedRiskFilter: PullRequestRiskFilter = .all
     @Published private(set) var isLoading = false
 
     private let service: any CodeAtlasIntelligenceServicing
 
     var displayedApprovalStatus: PullRequestApprovalStatus? {
         decisionOverride ?? summary?.approvalStatus
+    }
+
+    var filteredFiles: [PullRequestFile] {
+        guard let summary else { return [] }
+        return summary.changedFiles.filter { selectedRiskFilter.matches($0) }
+    }
+
+    var highRiskFileCount: Int {
+        summary?.changedFiles.filter { $0.risk == .high }.count ?? 0
+    }
+
+    var totalLineDelta: Int {
+        summary?.changedFiles.reduce(0) { $0 + $1.additions + $1.deletions } ?? 0
+    }
+
+    var reviewCommentCount: Int {
+        summary?.comments.count ?? 0
     }
 
     init(service: (any CodeAtlasIntelligenceServicing)? = nil) {
@@ -1635,6 +1653,11 @@ struct PullRequestReviewScreen: View {
                         PullRequestSummaryView(
                             summary: summary,
                             approvalStatus: viewModel.displayedApprovalStatus,
+                            filteredFiles: viewModel.filteredFiles,
+                            selectedRiskFilter: $viewModel.selectedRiskFilter,
+                            highRiskFileCount: viewModel.highRiskFileCount,
+                            totalLineDelta: viewModel.totalLineDelta,
+                            reviewCommentCount: viewModel.reviewCommentCount,
                             approve: viewModel.approve,
                             requestChanges: viewModel.requestChanges
                         )
@@ -2826,6 +2849,11 @@ private struct RefactorDetailRow: View {
 private struct PullRequestSummaryView: View {
     let summary: PullRequestSummary
     let approvalStatus: PullRequestApprovalStatus?
+    let filteredFiles: [PullRequestFile]
+    @Binding var selectedRiskFilter: PullRequestRiskFilter
+    let highRiskFileCount: Int
+    let totalLineDelta: Int
+    let reviewCommentCount: Int
     let approve: () -> Void
     let requestChanges: () -> Void
 
@@ -2847,6 +2875,12 @@ private struct PullRequestSummaryView: View {
                 }
                 Text(summary.summary)
                     .foregroundStyle(.secondary)
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    PullRequestMetricTile(title: "Files Changed", value: "\(summary.changedFiles.count)", symbol: "doc.on.doc")
+                    PullRequestMetricTile(title: "High Risk", value: "\(highRiskFileCount)", symbol: "exclamationmark.triangle", tint: .red)
+                    PullRequestMetricTile(title: "Line Delta", value: "\(totalLineDelta)", symbol: "plus.forwardslash.minus", tint: .orange)
+                    PullRequestMetricTile(title: "Comments", value: "\(reviewCommentCount)", symbol: "text.bubble", tint: .blue)
+                }
                 HStack {
                     Button(action: approve) {
                         Label("Approve", systemImage: "checkmark.circle")
@@ -2863,9 +2897,16 @@ private struct PullRequestSummaryView: View {
             }
             .panelStyle()
 
+            PullRequestRiskFilterPicker(selection: $selectedRiskFilter)
+
             SectionHeader(title: "Changed Files", symbol: "doc.on.doc")
-            ForEach(summary.changedFiles) { file in
-                PullRequestFileCard(file: file)
+            if filteredFiles.isEmpty {
+                ContentUnavailableView("No files for this risk", systemImage: "line.3.horizontal.decrease.circle", description: Text("Choose another risk filter to inspect the changed files."))
+                    .panelStyle()
+            } else {
+                ForEach(filteredFiles) { file in
+                    PullRequestFileCard(file: file)
+                }
             }
 
             SectionHeader(title: "AI Review Comments", symbol: "text.bubble")
@@ -2888,18 +2929,60 @@ private struct PullRequestSummaryView: View {
     }
 }
 
+private struct PullRequestMetricTile: View {
+    let title: String
+    let value: String
+    let symbol: String
+    var tint: Color = .accentColor
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: symbol)
+                .font(.headline)
+                .foregroundStyle(tint)
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline.monospacedDigit())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+private struct PullRequestRiskFilterPicker: View {
+    @Binding var selection: PullRequestRiskFilter
+
+    var body: some View {
+        Picker("Pull request risk filter", selection: $selection) {
+            ForEach(PullRequestRiskFilter.allCases) { filter in
+                Label(filter.title, systemImage: filter.symbol)
+                    .tag(filter)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("pullRequestRiskFilterPicker")
+    }
+}
+
 private struct PullRequestFileCard: View {
     let file: PullRequestFile
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(file.path)
                         .font(.footnote.monospaced())
-                    Text("+\(file.additions) -\(file.deletions)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        Label("+\(file.additions)", systemImage: "plus")
+                            .foregroundStyle(.green)
+                        Label("-\(file.deletions)", systemImage: "minus")
+                            .foregroundStyle(.red)
+                    }
+                    .font(.caption.weight(.semibold))
                 }
                 Spacer()
                 Text(file.risk.title)
@@ -3567,6 +3650,46 @@ struct PullRequestSummary: Equatable {
     let comments: [PullRequestComment]
     let securityConcerns: [String]
     let performanceSuggestions: [String]
+}
+
+enum PullRequestRiskFilter: String, CaseIterable, Identifiable {
+    case all
+    case high
+    case medium
+    case low
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: "All"
+        case .high: "High"
+        case .medium: "Medium"
+        case .low: "Low"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .all: "tray.full"
+        case .high: "exclamationmark.triangle"
+        case .medium: "circle.lefthalf.filled"
+        case .low: "checkmark.shield"
+        }
+    }
+
+    func matches(_ file: PullRequestFile) -> Bool {
+        switch self {
+        case .all:
+            true
+        case .high:
+            file.risk == .high
+        case .medium:
+            file.risk == .medium
+        case .low:
+            file.risk == .low
+        }
+    }
 }
 
 struct PullRequestFile: Identifiable, Equatable {
