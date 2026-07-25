@@ -368,7 +368,9 @@ actor MockCodeAtlasIntelligenceService: CodeAtlasIntelligenceServicing {
                 }
                 """,
                 impacts: [.readability, .maintainability],
-                files: ["Sources/Auth/SessionManager.swift", "Sources/Networking/APIClient.swift"]
+                files: ["Sources/Auth/SessionManager.swift", "Sources/Networking/APIClient.swift"],
+                maintainabilityScore: 64,
+                estimatedComplexity: "Medium"
             ),
             RefactorRecommendation(
                 priority: .medium,
@@ -391,7 +393,9 @@ actor MockCodeAtlasIntelligenceService: CodeAtlasIntelligenceServicing {
                 }
                 """,
                 impacts: [.readability, .maintainability],
-                files: ["Sources/Chat/ChatViewModel.swift"]
+                files: ["Sources/Chat/ChatViewModel.swift"],
+                maintainabilityScore: 72,
+                estimatedComplexity: "Low"
             ),
             RefactorRecommendation(
                 priority: .medium,
@@ -411,7 +415,31 @@ actor MockCodeAtlasIntelligenceService: CodeAtlasIntelligenceServicing {
                 }
                 """,
                 impacts: [.readability, .maintainability],
-                files: ["Sources/Chat/ChatView.swift", "Sources/SourceViewer/SourceViewer.swift"]
+                files: ["Sources/Chat/ChatView.swift", "Sources/SourceViewer/SourceViewer.swift"],
+                maintainabilityScore: 69,
+                estimatedComplexity: "Medium"
+            ),
+            RefactorRecommendation(
+                priority: .medium,
+                title: "Cache repeated repository map transforms",
+                problem: "Repository map rows are transformed every time the Explore screen refreshes.",
+                whyItMatters: "Repeated tree reconstruction can make large repositories feel slower on older iPhones.",
+                suggestedSolution: "Cache the normalized tree snapshot by repository ID and invalidate it only after indexing completes.",
+                beforeCode: """
+                let tree = files.reduce(into: Tree()) { tree, file in
+                    tree.insert(file.path)
+                }
+                """,
+                afterCode: """
+                let tree = try await architectureCache.tree(
+                    for: repositoryID,
+                    files: files
+                )
+                """,
+                impacts: [.performance, .maintainability],
+                files: ["Sources/Explore/ArchitectureExplorerViewModel.swift"],
+                maintainabilityScore: 74,
+                estimatedComplexity: "Medium"
             ),
             RefactorRecommendation(
                 priority: .low,
@@ -422,7 +450,9 @@ actor MockCodeAtlasIntelligenceService: CodeAtlasIntelligenceServicing {
                 beforeCode: "let sev: FindingSeverity",
                 afterCode: "let severity: FindingSeverity",
                 impacts: [.readability],
-                files: ["Sources/PullRequests/PullRequestModels.swift"]
+                files: ["Sources/PullRequests/PullRequestModels.swift"],
+                maintainabilityScore: 88,
+                estimatedComplexity: "Low"
             )
         ]
     }
@@ -676,9 +706,28 @@ final class ArchitectureExplorerViewModel: ObservableObject {
 final class RefactoringAssistantViewModel: ObservableObject {
     @Published private(set) var recommendations: [RefactorRecommendation] = []
     @Published private(set) var appliedRecommendationIDs: Set<UUID> = []
+    @Published var selectedFilter: RefactorFilter = .all
     @Published private(set) var isLoading = false
 
     private let service: any CodeAtlasIntelligenceServicing
+
+    var filteredRecommendations: [RefactorRecommendation] {
+        recommendations.filter { selectedFilter.matches($0) }
+    }
+
+    var highPriorityCount: Int {
+        recommendations.filter { $0.priority == .high }.count
+    }
+
+    var averageMaintainabilityScore: Int {
+        guard !recommendations.isEmpty else { return 100 }
+        let total = recommendations.reduce(0) { $0 + $1.maintainabilityScore }
+        return total / recommendations.count
+    }
+
+    var appliedCount: Int {
+        appliedRecommendationIDs.count
+    }
 
     init(service: (any CodeAtlasIntelligenceServicing)? = nil) {
         self.service = service ?? MockCodeAtlasIntelligenceService()
@@ -1531,13 +1580,25 @@ struct RefactoringAssistantScreen: View {
                     if viewModel.isLoading {
                         LoadingPanel(title: "Generating refactor plan", detail: "Checking duplication, coupling, naming, and maintainability risks.")
                     } else {
+                        RefactorSummaryPanel(
+                            totalCount: viewModel.recommendations.count,
+                            highPriorityCount: viewModel.highPriorityCount,
+                            appliedCount: viewModel.appliedCount,
+                            maintainabilityScore: viewModel.averageMaintainabilityScore
+                        )
+                        RefactorFilterPicker(selection: $viewModel.selectedFilter)
                         RefactorSampleFilePanel()
-                        ForEach(viewModel.recommendations) { recommendation in
-                            RefactorRecommendationCard(
-                                recommendation: recommendation,
-                                isApplied: viewModel.appliedRecommendationIDs.contains(recommendation.id)
-                            ) {
-                                viewModel.toggleApplied(recommendation)
+                        if viewModel.filteredRecommendations.isEmpty {
+                            ContentUnavailableView("No matching recommendations", systemImage: "line.3.horizontal.decrease.circle", description: Text("Choose a different filter to see more refactoring opportunities."))
+                                .panelStyle()
+                        } else {
+                            ForEach(viewModel.filteredRecommendations) { recommendation in
+                                RefactorRecommendationCard(
+                                    recommendation: recommendation,
+                                    isApplied: viewModel.appliedRecommendationIDs.contains(recommendation.id)
+                                ) {
+                                    viewModel.toggleApplied(recommendation)
+                                }
                             }
                         }
                     }
@@ -2590,6 +2651,65 @@ private struct ArchitectureModuleCard: View {
     }
 }
 
+private struct RefactorSummaryPanel: View {
+    let totalCount: Int
+    let highPriorityCount: Int
+    let appliedCount: Int
+    let maintainabilityScore: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader(title: "Analysis Summary", symbol: "chart.bar.doc.horizontal")
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                RefactorMetricTile(title: "Recommendations", value: "\(totalCount)", symbol: "list.bullet.rectangle")
+                RefactorMetricTile(title: "High Priority", value: "\(highPriorityCount)", symbol: "flame", tint: .red)
+                RefactorMetricTile(title: "Applied", value: "\(appliedCount)", symbol: "checkmark.circle", tint: .green)
+                RefactorMetricTile(title: "Maintainability", value: "\(maintainabilityScore)/100", symbol: "gauge.with.dots.needle.bottom.50percent", tint: maintainabilityScore >= 80 ? .green : .orange)
+            }
+        }
+        .panelStyle()
+        .accessibilityIdentifier("refactorSummaryPanel")
+    }
+}
+
+private struct RefactorMetricTile: View {
+    let title: String
+    let value: String
+    let symbol: String
+    var tint: Color = .accentColor
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: symbol)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(tint)
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline.monospacedDigit())
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+private struct RefactorFilterPicker: View {
+    @Binding var selection: RefactorFilter
+
+    var body: some View {
+        Picker("Refactor filter", selection: $selection) {
+            ForEach(RefactorFilter.allCases) { filter in
+                Label(filter.title, systemImage: filter.symbol)
+                    .tag(filter)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("refactorFilterPicker")
+    }
+}
+
 private struct RefactorSampleFilePanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2640,6 +2760,11 @@ private struct RefactorRecommendationCard: View {
                 }
             }
 
+            HStack(spacing: 10) {
+                RefactorCompactMetric(title: "Maintainability", value: "\(recommendation.maintainabilityScore)/100", symbol: "gauge.with.dots.needle.bottom.50percent")
+                RefactorCompactMetric(title: "Complexity", value: recommendation.estimatedComplexity, symbol: "slider.horizontal.3")
+            }
+
             VStack(alignment: .leading, spacing: 8) {
                 Text("Before")
                     .font(.subheadline.weight(.semibold))
@@ -2657,6 +2782,30 @@ private struct RefactorRecommendationCard: View {
         }
         .panelStyle()
         .accessibilityIdentifier("refactorRecommendationCard")
+    }
+}
+
+private struct RefactorCompactMetric: View {
+    let title: String
+    let value: String
+    let symbol: String
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.caption.weight(.semibold))
+            }
+        } icon: {
+            Image(systemName: symbol)
+                .foregroundStyle(Color.accentColor)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -3267,7 +3416,7 @@ struct ArchitectureModule: Identifiable, Equatable {
 }
 
 struct RefactorRecommendation: Identifiable, Equatable {
-    let id = UUID()
+    let id: UUID
     let priority: RecommendationPriority
     let title: String
     let problem: String
@@ -3277,6 +3426,36 @@ struct RefactorRecommendation: Identifiable, Equatable {
     let afterCode: String
     let impacts: [RefactorImpact]
     let files: [String]
+    let maintainabilityScore: Int
+    let estimatedComplexity: String
+
+    nonisolated init(
+        id: UUID = UUID(),
+        priority: RecommendationPriority,
+        title: String,
+        problem: String,
+        whyItMatters: String,
+        suggestedSolution: String,
+        beforeCode: String,
+        afterCode: String,
+        impacts: [RefactorImpact],
+        files: [String],
+        maintainabilityScore: Int = 78,
+        estimatedComplexity: String = "Medium"
+    ) {
+        self.id = id
+        self.priority = priority
+        self.title = title
+        self.problem = problem
+        self.whyItMatters = whyItMatters
+        self.suggestedSolution = suggestedSolution
+        self.beforeCode = beforeCode
+        self.afterCode = afterCode
+        self.impacts = impacts
+        self.files = files
+        self.maintainabilityScore = maintainabilityScore
+        self.estimatedComplexity = estimatedComplexity
+    }
 }
 
 enum RecommendationPriority: Equatable {
@@ -3305,6 +3484,46 @@ enum RecommendationPriority: Equatable {
         case .high: .red
         case .medium: .orange
         case .low: .green
+        }
+    }
+}
+
+enum RefactorFilter: String, CaseIterable, Identifiable {
+    case all
+    case highPriority
+    case maintainability
+    case performance
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: "All"
+        case .highPriority: "High"
+        case .maintainability: "Maintain"
+        case .performance: "Perf"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .all: "tray.full"
+        case .highPriority: "flame"
+        case .maintainability: "wrench.adjustable"
+        case .performance: "speedometer"
+        }
+    }
+
+    func matches(_ recommendation: RefactorRecommendation) -> Bool {
+        switch self {
+        case .all:
+            true
+        case .highPriority:
+            recommendation.priority == .high
+        case .maintainability:
+            recommendation.impacts.contains(.maintainability)
+        case .performance:
+            recommendation.impacts.contains(.performance)
         }
     }
 }
