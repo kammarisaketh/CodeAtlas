@@ -1,5 +1,10 @@
 # CodeAtlas
 
+![iOS](https://img.shields.io/badge/iOS-SwiftUI-blue)
+![Backend](https://img.shields.io/badge/Backend-FastAPI-green)
+![Auth](https://img.shields.io/badge/Auth-Apple%20%2B%20GitHub-black)
+![Status](https://img.shields.io/badge/Status-Portfolio%20MVP-purple)
+
 CodeAtlas is a native iOS and FastAPI portfolio application that helps engineers understand, review, and navigate software repositories.
 
 The app connects to GitHub, indexes repository files, and gives repository-aware answers, code review notes, architecture summaries, and source navigation. The goal is focused code intelligence: answers should be grounded in the indexed repository instead of behaving like a generic chatbot.
@@ -101,17 +106,16 @@ Do not commit `.env` files. They are ignored by Git.
 
 ## Screenshots
 
-| Home | Repositories |
-| --- | --- |
-| ![CodeAtlas home screen](docs/screenshots/01-home.png) | ![CodeAtlas repositories screen](docs/screenshots/02-repos.png) |
+<p align="center">
+  <img src="docs/screenshots/01-home.png" alt="CodeAtlas home screen" width="220">
+  <img src="docs/screenshots/02-repos.png" alt="CodeAtlas repositories screen" width="220">
+  <img src="docs/screenshots/03-explore.png" alt="CodeAtlas architecture explorer" width="220">
+</p>
 
-| Architecture Explorer | Ask Your Code |
-| --- | --- |
-| ![CodeAtlas architecture explorer](docs/screenshots/03-explore.png) | ![CodeAtlas ask screen](docs/screenshots/04-ask.png) |
-
-| Account |
-| --- |
-| ![CodeAtlas account screen](docs/screenshots/05-account.png) |
+<p align="center">
+  <img src="docs/screenshots/04-ask.png" alt="CodeAtlas ask screen" width="220">
+  <img src="docs/screenshots/05-account.png" alt="CodeAtlas account screen" width="220">
+</p>
 
 ## Documentation
 
