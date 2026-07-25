@@ -130,6 +130,7 @@ Do not commit `.env` files. They are ignored by Git.
 - [Screenshot Guide](docs/SCREENSHOT_GUIDE.md)
 - [LinkedIn Post Draft](docs/LINKEDIN_POST.md)
 - [App Store Description Draft](docs/APP_STORE_DESCRIPTION.md)
+- [V2 Phase 1 QA Report](docs/qa/V2_PHASE_1_QA_REPORT.md)
 
 ## Production Readiness
 
