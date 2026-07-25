@@ -43,3 +43,23 @@
 - Parser and LLM providers are abstractions from Phase 1 to avoid lock-in.
 - SSE is preferred for streaming because it works well with `URLSession`.
 
+## Current Portfolio Implementation
+
+The current implementation is built to demonstrate the end-to-end product shape:
+
+- iOS app with Apple login, mock demo mode, account flow, repository dashboard, ask, explore, and review screens.
+- FastAPI backend with GitHub OAuth, repository creation, indexing, file browsing, review, and health endpoints.
+- Local development persistence for simple demos.
+- PostgreSQL and Docker Compose support for the production path.
+- Documentation for product requirements, API contracts, security, database schema, and implementation roadmap.
+
+## Production Expansion Path
+
+For a fully deployed SaaS version, the next architecture upgrades are:
+
+- Hosted PostgreSQL with pgvector enabled.
+- Durable background jobs for indexing large repositories.
+- Real embedding generation and hybrid retrieval.
+- Provider-independent LLM orchestration.
+- Observability, audit logs, deployment automation, and incident monitoring.
+- Stronger authorization boundaries for multi-user repository access.
